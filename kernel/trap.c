@@ -77,8 +77,15 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+  if(which_dev == 2) {
+    p->ticks ++;
+    if (p->alarm_pe != 0 && p->ticks == p->alarm_pe) {
+      p->trapframe->epc = (uint64)p->alarm_handler;//set the address of syscall alarm
+      p->ticks = 0;
+    }
+    yield();    
+  }
+
 
   usertrapret();
 }
