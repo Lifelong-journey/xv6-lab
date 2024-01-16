@@ -80,7 +80,7 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
-enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };//all the process state in struct proc
 
 // Per-process state
 struct proc {
@@ -103,4 +103,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int mask;                    // The "trace"'s argument
+                               //注意：你不能在结构体里给它初始化，需要去allocproc里面赋值
 };

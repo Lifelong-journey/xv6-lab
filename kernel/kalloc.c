@@ -15,14 +15,14 @@ extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
 struct run {
-  struct run *next;
+  struct run *next;//linked list pointer
 };
 
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
-
+} kmem;//linked list, the implementation of the pages
+//这里直接声明了一个实例kmem，因此可以直接用
 void
 kinit()
 {
@@ -36,7 +36,7 @@ freerange(void *pa_start, void *pa_end)
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
-    kfree(p);
+    kfree(p);//通过这个循环将所有pages初始化为1(free all the pages)
 }
 
 // Free the page of physical memory pointed at by v,
@@ -56,8 +56,8 @@ kfree(void *pa)
 
   r = (struct run*)pa;
 
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
+  acquire(&kmem.lock);//r->next: 上一个节点的指针
+  r->next = kmem.freelist;//freelist: 可用的最后一个page的地址
   kmem.freelist = r;
   release(&kmem.lock);
 }
@@ -73,10 +73,23 @@ kalloc(void)
   acquire(&kmem.lock);
   r = kmem.freelist;
   if(r)
-    kmem.freelist = r->next;
+    kmem.freelist = r->next;//可用page指针前移
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+int free_memory(void)
+{
+  struct run * r;
+  r = kmem.freelist;
+  uint64 cnt = 0;
+  while(r)//为什么第一个不可用页是0呢？难道是默认初始化？
+  {
+    cnt ++;
+    r = r->next;
+  }
+  return cnt * PGSIZE;
 }

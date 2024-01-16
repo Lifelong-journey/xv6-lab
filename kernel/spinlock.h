@@ -1,5 +1,5 @@
 // Mutual exclusion lock.
-struct spinlock {
+struct spinlock {//确保多处理器对共享资源使用是互斥的
   uint locked;       // Is the lock held?
 
   // For debugging:

@@ -8,7 +8,7 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct proc proc[NPROC];//存储了所有的process信息
 
 struct proc *initproc;
 
@@ -66,10 +66,10 @@ mycpu(void) {
 // Return the current struct proc *, or zero if none.
 struct proc*
 myproc(void) {
-  push_off();
-  struct cpu *c = mycpu();
-  struct proc *p = c->proc;
-  pop_off();
+  push_off();//禁用中断
+  struct cpu *c = mycpu();//获得当前cpu信息
+  struct proc *p = c->proc;//从cpu中获取当前进程指针
+  pop_off();//启用中断，防止获取指针的过程被打断
   return p;
 }
 
@@ -126,6 +126,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->mask = 0;//初始化mask
 
   return p;
 }
@@ -150,6 +151,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->mask = 0; // 释放mask
 }
 
 // Create a user page table for a given process,
@@ -259,8 +261,8 @@ int
 fork(void)
 {
   int i, pid;
-  struct proc *np;
-  struct proc *p = myproc();
+  struct proc *np; // child
+  struct proc *p = myproc();// parent
 
   // Allocate process.
   if((np = allocproc()) == 0){
@@ -276,12 +278,16 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
-
+  
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
+  np->mask = p->mask;// copy mask for "trace"
+
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
+
+
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
@@ -692,4 +698,18 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int free_proc(void)
+{
+  uint64 cnt = 0;
+  struct proc *p;
+  for(p = proc; p <= &proc[NPROC]; p++)//遍历proc数组
+  {
+    acquire(&p->lock);//暂时不太清楚锁的用途
+    if(p->state != UNUSED)
+      cnt ++;
+    release(&p->lock);
+  }
+  return cnt;
 }
