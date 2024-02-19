@@ -116,6 +116,16 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  //uvmunmap(p->kpagetable, 0, PGROUNDUP(oldsz)/PGSIZE, 0);//消除旧的映射但不需要？
+  if(pagecopy(p->pagetable, p->kpagetable, 0, p->sz) < 0)//复制page table
+    goto bad;
+
+  w_satp(MAKE_SATP(p->kpagetable));//载入satp寄存器
+  sfence_vma();//刷新映射
+
+  if(p ->pid == 1)
+    vmprint(p->pagetable);
+
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:

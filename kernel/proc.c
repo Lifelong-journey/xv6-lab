@@ -120,6 +120,21 @@ found:
     release(&p->lock);
     return 0;
   }
+  
+  //为每一个进程分配一个kernel page table
+  p->kpagetable = ukvminit();
+  if(p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  //仿照procinit中添加kernel stack映射
+  uint64 va = KSTACK((int) (p - proc));
+  pte_t pa = kvmpa(va);//pa可以直接算
+  memset((void*)pa, 0, PGSIZE);// 刷新？
+  ukvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);//加入映射
+  p->kstack = va;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -150,6 +165,12 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  if(p->kpagetable) {
+    freeprockvm(p);
+    p->kpagetable = 0;
+  }
+  if(p->kstack)
+    p->kstack = 0;
 }
 
 // Create a user page table for a given process,
@@ -221,6 +242,8 @@ userinit(void)
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
 
+  pagecopy(p->pagetable, p->kpagetable, 0, p->sz);//copy
+
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -243,12 +266,19 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    if(sz + n > PLIC || (sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {//不能溢出
       return -1;
     }
+    if(pagecopy(p->pagetable, p->kpagetable, p->sz, sz) != 0) {
+      return -1;
+    }//同步增量
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    if(sz != p->sz) {
+      uvmunmap(p->kpagetable, PGROUNDUP(sz), (PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE, 0);
+    }//同步缩量
   }
+  //ukvminithard(p->kpagetable);
   p->sz = sz;
   return 0;
 }
@@ -275,6 +305,12 @@ fork(void)
   }
   np->sz = p->sz;
 
+  //同步pagetable 与 kpagetable
+  if(pagecopy(np->pagetable, np->kpagetable, 0, np->sz) != 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
   np->parent = p;
 
   // copy saved user registers.
@@ -473,10 +509,15 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        //切换到即将运行的process的kernel page table
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        //当process运行结束后，要切换回全局kernel page table
+        kvminithart();
         c->proc = 0;
 
         found = 1;

@@ -1,0 +1,2 @@
+Q1:page0是text和data部分，page1是guard page, page2是stack部分。可以在exec中看到，exec同时分配两个pagel, 高位作为stack，低位作为guard。
+Q2:用来防止溢出
