@@ -117,7 +117,11 @@ sys_sigalarm(void)
 }
 
 uint64 
-sys_sigreturn()
-{
+sys_sigreturn(void){
+  struct proc* p = myproc();
+  if (p->isalarm){
+    p->isalarm = 0;
+    *p->trapframe = *p->atrapframe;//恢复寄存器
+  }
   return 0;
 }

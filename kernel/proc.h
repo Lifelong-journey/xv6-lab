@@ -106,4 +106,6 @@ struct proc {
   int alarm_pe;
   void (*alarm_handler)();
   int ticks;
+  int isalarm;
+  struct trapframe *atrapframe;
 };

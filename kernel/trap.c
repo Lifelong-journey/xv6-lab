@@ -79,9 +79,11 @@ usertrap(void)
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2) {
     p->ticks ++;
-    if (p->alarm_pe != 0 && p->ticks == p->alarm_pe) {
+    if (p->alarm_pe != 0 && p->ticks == p->alarm_pe && p->isalarm == 0) {
+      p->isalarm = 1;//set alarm flag
+      *p->atrapframe = *p->trapframe;//备份寄存器
       p->trapframe->epc = (uint64)p->alarm_handler;//set the address of syscall alarm
-      p->ticks = 0;
+      p->ticks = 0;//it can also be set in sys_sigreturn
     }
     yield();    
   }
