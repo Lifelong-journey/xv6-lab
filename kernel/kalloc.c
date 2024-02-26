@@ -25,7 +25,7 @@ struct {
 
 struct Pagecount{ // count for physical memory reference
   struct spinlock lock; //还未了解lock的功能，因此不知是给每一个数组元素都加lock还是给整个数组加lock更好
-  int cnt;//猜测是给元素加lock,因为如果整个加lock大概会影响并发
+  int cnt; // 猜测是给元素加lock,因为如果整个加lock大概会影响并发
 }ref[(PHYSTOP - KERNBASE) / PGSIZE];
 
 void
