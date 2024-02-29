@@ -1,0 +1,1 @@
+    像pagetable在使用头插法add free page时相同，如果当两个key同时指向了next，那么头指针只会指向后一个key，前一个key就丢失了。
