@@ -56,11 +56,13 @@ kfree(void *pa)
   memset(pa, 1, PGSIZE);
 
   r = (struct run*)pa;
+  push_off();
   int cpunum = cpuid();
   acquire(&kmem[cpunum].lock);
   r->next = kmem[cpunum].freelist;
   kmem[cpunum].freelist = r;
   release(&kmem[cpunum].lock);
+  pop_off();
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -70,6 +72,7 @@ void *
 kalloc(void)
 {
   struct run *r;
+  push_off();
   int cpunum = cpuid();
   acquire(&kmem[cpunum].lock);
   r = kmem[cpunum].freelist;
@@ -80,6 +83,7 @@ kalloc(void)
   if (!r) {
     r = ksteal(cpunum); // steal page
   }
+  pop_off();
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
