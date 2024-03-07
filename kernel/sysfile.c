@@ -115,6 +115,7 @@ sys_fstat(void)
   return filestat(f, st);
 }
 
+
 // Create the path new as a link to the same inode as old.
 uint64
 sys_link(void)
@@ -287,6 +288,7 @@ uint64
 sys_open(void)
 {
   char path[MAXPATH];
+  char sympath[MAXPATH];
   int fd, omode;
   struct file *f;
   struct inode *ip;
@@ -320,6 +322,30 @@ sys_open(void)
     iunlockput(ip);
     end_op();
     return -1;
+  }
+
+  if (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+    int depth = 0;
+    while(ip->type == T_SYMLINK)
+    {
+      if (readi(ip, 0, (uint64)sympath, 0, MAXPATH) < 0) {
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
+      iunlockput(ip);
+      if ((ip = namei(sympath)) == 0) {
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      depth ++;
+      if (depth > 10) {
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
+    }
   }
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
@@ -482,5 +508,37 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  struct inode *ip;
+
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+
+  begin_op();
+  
+  if ((ip = namei(path)) != 0) {
+    end_op();
+    return -1;
+  }
+
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) {
+    end_op();
+    return -1;
+  }
+
+  if (writei(ip, 0, (uint64)target, 0, MAXPATH) < 0) {
+    iunlockput(ip); // 因为writei写入需要持有锁，因此不管是否成功都需要释放锁
+    end_op(); // 详情可见file.c中的filewrite
+    return -1;
+  }
+
+  iunlockput(ip);
+  end_op();
   return 0;
 }
