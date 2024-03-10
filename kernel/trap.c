@@ -5,6 +5,18 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+
+struct file {
+  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
+  int ref; // reference count
+  char readable;
+  char writable;
+  struct pipe *pipe; // FD_PIPE
+  struct inode *ip;  // FD_INODE and FD_DEVICE
+  uint off;          // FD_INODE
+  short major;       // FD_DEVICE
+};
 
 struct spinlock tickslock;
 uint ticks;
@@ -67,14 +79,74 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if (r_scause() == 13 || r_scause() == 15) {
+
+    uint64 va = r_stval();
+    struct proc *p = myproc();
+    if (va > MAXVA || va > p->sz) {
+      p->killed = 1;
+    }
+    else {
+      struct mvma* crvma = 0;
+      int found = 0;
+      for (int i = 0; i < NVMA; i++)
+      {
+        crvma = &p->vma[i];
+        if (crvma->used && va >= crvma->addr && va < crvma->addr + crvma->len) {
+          found = 1;
+          break;
+        }
+      }
+      if (!found){
+        p->killed = 1;
+        goto bad;
+      }
+      //printf("yes1");
+
+      va = PGROUNDDOWN(va);
+      uint64 pa = (uint64)kalloc();
+      if (pa == 0) {
+        p->killed = 1; 
+        goto bad;
+      }
+
+      memset((void*)pa, 0, PGSIZE);
+      //printf("yes2");
+      ilock(crvma->fl->ip);
+      if (readi(crvma->fl->ip, 0, pa, crvma->offset + va - crvma->addr, PGSIZE) < 0) {
+        iunlock(crvma->fl->ip);
+        p->killed = 1;
+        goto bad;
+      }
+      iunlock(crvma->fl->ip);
+      //printf("yes3");
+      int flag = PTE_U;
+      if (crvma->protection & PROT_READ)
+        flag |= PTE_R;
+      if (crvma->protection & PROT_WRITE)
+        flag |= PTE_W;
+      if (crvma->protection & PROT_EXEC)
+        flag |= PTE_X;
+      if (mappages(p->pagetable, va, PGSIZE, pa, flag) < 0) {
+        kfree((void*)pa);
+        p->killed = 1;
+        goto bad;
+      }
+    }
+    bad:;
+      //printf("mmap trap failed");
+  }
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
+  } 
+
+  if(p->killed) {
+    //printf("bad");
+    exit(-1);    
   }
 
-  if(p->killed)
-    exit(-1);
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)

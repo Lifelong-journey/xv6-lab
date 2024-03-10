@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -119,6 +120,8 @@ found:
     release(&p->lock);
     return 0;
   }
+
+  memset(&p->vma, 0, sizeof (p->vma));
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -299,7 +302,15 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
-
+  //printf("yes1");
+  for (int i = 0; i < NVMA; i++)
+  {
+    if (p->vma[i].used)
+    {
+      memmove(&np->vma[i], &p->vma[i], sizeof(p->vma[i]));
+      filedup(p->vma[i].fl);
+    }
+  }
   np->state = RUNNABLE;
 
   release(&np->lock);
@@ -339,6 +350,7 @@ reparent(struct proc *p)
 void
 exit(int status)
 {
+  //printf("bad");
   struct proc *p = myproc();
 
   if(p == initproc)
@@ -350,6 +362,19 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  // unmap all the mmap pages
+  for (int i = 0; i < NVMA; i++)
+  {
+    if (p->vma[i].used)
+    {
+      if (p->vma[i].flags & MAP_SHARED)
+        filewrite(p->vma[i].fl, p->vma[i].addr, p->vma[i].len);
+      fileclose(p->vma[i].fl);
+      uvmunmap(p->pagetable, p->vma[i].addr, p->vma[i].len / PGSIZE, 1);
+      p->vma[i].used = 0;
     }
   }
 

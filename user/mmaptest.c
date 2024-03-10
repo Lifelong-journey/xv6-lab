@@ -49,7 +49,9 @@ _v1(char *p)
         err("v1 mismatch (2)");
       }
     }
+    //printf("yes");
   }
+  //printf("ok");
 }
 
 //
@@ -111,9 +113,11 @@ mmap_test(void)
   // offset in the file.
   //
   char *p = mmap(0, PGSIZE*2, PROT_READ, MAP_PRIVATE, fd, 0);
+
   if (p == MAP_FAILED)
     err("mmap (1)");
   _v1(p);
+  printf("mmap1 ok\n");  
   if (munmap(p, PGSIZE*2) == -1)
     err("munmap (1)");
 

@@ -484,3 +484,104 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_mmap(void)
+{
+  struct proc*p = myproc();
+  int len, offset, prot, flags, fd;
+  uint64 addr;
+  struct file *f;
+
+  if (argaddr(0, &addr) < 0 || argint(1, &len) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, &fd, &f) < 0 || argint(5, &offset) < 0)
+    goto bad;
+  
+  len = PGROUNDUP(len);  
+  if(addr != 0 || offset != 0 || len < 0) // 根据实验手册要求进行检查
+    goto bad;
+  if (!f->writable && (prot & PROT_WRITE) && (flags == MAP_SHARED))
+    goto bad;
+  if (MAXVA - len < p->sz)
+    goto bad;
+  if (!f->readable &&  (prot & PROT_READ))
+    goto bad;
+  
+
+  for (int i = 0; i < NVMA; i++)
+  {
+    if (p->vma[i].used == 0) {
+
+      struct mvma* crvma = &p->vma[i];
+      crvma->used = 1;
+      crvma->addr = p->sz; // 注意顺序！！！
+      p->sz += len; // 注意顺序！！！
+      crvma->len = len;
+      crvma->flags = flags;
+      crvma->protection = prot;
+      crvma->fd = fd;
+      crvma->offset = offset;
+      crvma->fl = f;
+      filedup(f);
+      return crvma->addr;
+    }
+  }
+  goto bad;
+
+  //printf("bad");
+  bad: return 0xffffffffffffffff;
+}
+
+uint64
+sys_munmap(void)
+{
+  struct proc *p = myproc();
+  uint64 addr;
+  int len;
+  struct mvma *crvma;  
+  if (argaddr(0, &addr) < 0 || argint(1, &len) < 0)
+    return -1;
+  
+  for (int i = 0; i <= NVMA; i++)
+  {
+    if (i == NVMA){
+      printf("bad1");
+      return -1;      
+    } 
+
+    crvma = &p->vma[i];
+    if (crvma->used && addr >= crvma->addr && addr <= crvma->addr + crvma->len) {
+      break;
+    }
+  }
+
+  addr = PGROUNDDOWN(addr);
+  len = PGROUNDUP(len);
+  if (crvma->flags & MAP_SHARED) {
+    if (filewrite(crvma->fl, addr, len) < 0){
+      //printf("filewrite failed");
+      //return -1; // why can't go error?      
+    }
+
+  }
+
+  uvmunmap(p->pagetable, addr, len / PGSIZE, 1);
+
+  if (addr == crvma->addr && len == crvma->len) { // all pages
+    fileclose(crvma->fl);
+    crvma->used = 0;
+  }
+  else if(addr == crvma->addr) { // start pages
+    crvma->addr += len;
+    crvma->len -= len;
+    crvma->offset += len;
+
+  }
+  else if((addr + len) == (crvma->addr + crvma->len)) { // end pages
+    crvma->len -= len;
+  }
+  else {
+    printf("Not allowed in this lab");
+    return -1;
+  }
+  return 0;
+}
