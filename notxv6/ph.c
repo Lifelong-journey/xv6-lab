@@ -72,11 +72,9 @@ get(int key)
 
 
   struct entry *e = 0;
-  pthread_mutex_lock(&lock[i]); 
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key) break;
   }
-  pthread_mutex_unlock(&lock[i]);
 
   return e;
 }
